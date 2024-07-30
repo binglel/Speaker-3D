@@ -337,7 +337,7 @@ if __name__ == '__main__':
         type=str,
         default='v2.0.4',
         required=False,
-        help='not usable parameter'
+        help='useless parameter'
     )
     parser.add_argument(
         '--extra_emb_model_id',
@@ -351,7 +351,7 @@ if __name__ == '__main__':
         type=str,
         default='v1.0.0',
         required=False,
-        help='not usable parameter'
+        help='useless parameter'
     )
     parser.add_argument(
         '--subseg_dur',
