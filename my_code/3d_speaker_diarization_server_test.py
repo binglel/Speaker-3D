@@ -126,7 +126,7 @@ def yaml_config_loader(conf_file_path):
     return conf_dict
 
 
-def extra_diar_embeddings( conf_file, subseg_json_path, embs_out_path, wav_path, gpus, use_gpu):
+def extra_diar_embeddings(conf_file, subseg_json_path, embs_out_path, wav_path, gpus, use_gpu):
     conf = yaml_config_loader(conf_file)
     if 'campp' in args.extra_emb_model_id:
         obj = 'speakerlab.models.campplus.DTDNN.CAMPPlus'
@@ -231,28 +231,17 @@ def cluster_and_postprocess(wav_path, embs_file, out_rttm_path):
         times = stat_obj['times']
     labels = cluster(embeddings)
     new_labels = np.zeros(len(labels), dtype=int)
+    # new_labels = [0] * len(labels)
     uniq = np.unique(labels)  # 集合
     for i in range(len(uniq)):
         new_labels[labels == uniq[i]] = i
+    new_labels = new_labels.tolist()
     seg_list = [(i, j) for i, j in zip(times, new_labels)]
     new_seg_list = make_rttms(seg_list, out_rttm_path, wav_id)
     return new_seg_list
 
 
-@app.post('/sd_offline/')
-async def sd_offline_wav(file: UploadFile = File(...)):
-    print('save upload file')
-    wav_id = datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")
-    audio_tmp = os.path.join(args.temp_dir, wav_id + '.tmp')
-
-    with open(audio_tmp, 'wb') as buffer:
-        await file.seek(0)
-        chunk = await file.read(8192)
-        while chunk:
-            buffer.write(chunk)
-            chunk = await file.read()
-    wav_path = os.path.splitext(audio_tmp)[0] + '.wav'
-    convert_to_wav(audio_tmp, wav_path)
+def sd_main(wav_path, wav_id, audio_tmp_path):
     vad_timestamp = vad_offline_not_realtime(wav_path)
 
     vad_output_file = args.json_dir + '/vad.json'
@@ -278,10 +267,28 @@ async def sd_offline_wav(file: UploadFile = File(...)):
     out_rttm_path = os.path.join(args.rttm_dir, wav_id + '.rttm')
     subseg_list = cluster_and_postprocess(wav_path, embs_file=embs_out_path, out_rttm_path=out_rttm_path)
 
-    remove_file([audio_tmp, wav_path, vad_output_file, subseg_output_file, embs_out_path, out_rttm_path])
+    remove_file([audio_tmp_path, wav_path, vad_output_file, subseg_output_file, embs_out_path, out_rttm_path])
     print(subseg_list)
 
-    # return subseg_list
+    return {'sd_res': subseg_list}
+
+@app.post('/sd_offline/')
+async def sd_offline(file: UploadFile = File(...)):
+    os.makedirs(args.temp_dir, exist_ok=True)
+    print('save upload file')
+    wav_id = datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")
+    audio_tmp_path = os.path.join(args.temp_dir, wav_id + '.tmp')
+    with open(audio_tmp_path, 'wb') as buffer:
+        await file.seek(0)
+        chunk = await file.read(8192)
+        while chunk:
+            buffer.write(chunk)
+            chunk = await file.read()
+
+    wav_path = os.path.splitext(audio_tmp_path)[0] + '.wav'
+    convert_to_wav(audio_tmp_path, wav_path)
+    res = sd_main(wav_path=wav_path, wav_id=wav_id, audio_tmp_path=audio_tmp_path)
+    return {"res": res}
 
 
 if __name__ == '__main__':
@@ -330,6 +337,7 @@ if __name__ == '__main__':
         type=str,
         default='v2.0.4',
         required=False,
+        help='not usable parameter'
     )
     parser.add_argument(
         '--extra_emb_model_id',
@@ -343,6 +351,7 @@ if __name__ == '__main__':
         type=str,
         default='v1.0.0',
         required=False,
+        help='not usable parameter'
     )
     parser.add_argument(
         '--subseg_dur',
